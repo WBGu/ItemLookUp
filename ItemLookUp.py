@@ -36,6 +36,7 @@ with st.sidebar:
     # Paste your ID here to save time, or leave empty to type it manually
     default_id = "" 
     folder_id = st.text_input("Google Drive Folder ID", value=default_id)
+    folder_id = "1V5nUlIgF783gDQA942Pl2XLxOKDDa0jK"
     st.info("Paste the ID from your Google Drive URL.")
 
 # --- SEARCH FORM (The Magic Part) ---
