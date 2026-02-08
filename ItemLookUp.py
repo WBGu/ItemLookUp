@@ -5,25 +5,24 @@ from googleapiclient.discovery import build
 # --- CONFIGURATION ---
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 
+# Initialize Session State to hold results (so they stay when search bar clears)
+if 'search_results' not in st.session_state:
+    st.session_state.search_results = []
+if 'last_query' not in st.session_state:
+    st.session_state.last_query = ""
+
 def get_drive_service():
     """Authenticates using Streamlit Secrets and returns the Drive service."""
     try:
-        # Check if secrets are loaded
         if "gcp_service_account" not in st.secrets:
-            st.error("Secrets not found! Please add your 'gcp_service_account' block to Streamlit Secrets.")
+            st.error("Secrets not found! Please check Streamlit settings.")
             st.stop()
             
-        # Load credentials from Secrets (dictionary format)
         key_dict = st.secrets["gcp_service_account"]
-        
-        # Create Credentials object
         creds = service_account.Credentials.from_service_account_info(
             key_dict, scopes=SCOPES
         )
-        
-        # Build and return the service
         return build('drive', 'v3', credentials=creds)
-        
     except Exception as e:
         st.error(f"Authentication Error: {str(e)}")
         st.stop()
@@ -31,35 +30,37 @@ def get_drive_service():
 # --- MAIN APP UI ---
 st.title("📂 Drive Image Search")
 
-# 1. Sidebar for Setup (Optional, keeps main UI clean)
+# Sidebar for Folder ID
 with st.sidebar:
     st.header("Settings")
-    # You can hardcode your folder ID here if you want to skip typing it every time
-    # default_folder = "YOUR_HARDCODED_FOLDER_ID"
-    default_folder = "" 
-    folder_id = st.text_input("Google Drive Folder ID", value=default_folder)
-    folder_id = "1V5nUlIgF783gDQA942Pl2XLxOKDDa0jK"
-    st.info("Paste the ID string from your Google Drive folder URL.")
+    # Paste your ID here to save time, or leave empty to type it manually
+    default_id = "" 
+    folder_id = st.text_input("Google Drive Folder ID", value=default_id)
+    st.info("Paste the ID from your Google Drive URL.")
 
-# 2. Main Search Area
-st.subheader("Search for an Image")
-query_text = st.text_input("Enter filename (e.g., 'invoice', 'cat')")
-
-# 3. Search Logic
-if st.button("Search", type="primary"):
+# --- SEARCH FORM (The Magic Part) ---
+# clear_on_submit=True ensures the text box empties after searching
+with st.form("search_form", clear_on_submit=True):
+    col1, col2 = st.columns([3, 1])
     
+    with col1:
+        # This input will clear automatically after you press Search
+        query_text = st.text_input("Search Filename", placeholder="e.g. invoice, cat")
+    
+    with col2:
+        # This button submits the form
+        submitted = st.form_submit_button("Search")
+
+# --- LOGIC ---
+if submitted and query_text:
     if not folder_id:
         st.warning("⚠️ Please enter a Folder ID in the sidebar first.")
-    elif not query_text:
-        st.warning("⚠️ Please enter a filename to search for.")
     else:
-        # Connect to Drive
         service = get_drive_service()
         
-        with st.spinner("Searching Google Drive..."):
+        with st.spinner("Searching..."):
             try:
-                # Construct Query: 
-                # name contains 'text' AND inside 'folder' AND is an image AND not in trash
+                # Construct Query
                 q = (
                     f"name contains '{query_text}' "
                     f"and '{folder_id}' in parents "
@@ -73,22 +74,32 @@ if st.button("Search", type="primary"):
                     fields="files(id, name, webContentLink, thumbnailLink)"
                 ).execute()
                 
-                items = results.get('files', [])
-
-                # Display Results
-                if not items:
-                    st.info(f"No images found matching '{query_text}' in that folder.")
-                else:
-                    st.success(f"Found {len(items)} image(s)!")
-                    
-                    # Create a grid layout for images
-                    cols = st.columns(2) # 2 images per row
-                    for index, item in enumerate(items):
-                        with cols[index % 2]:
-                            st.image(item['thumbnailLink'], use_column_width=True)
-                            st.caption(item['name'])
-                            # Link to view full size
-                            st.markdown(f"[View Full Size]({item['webContentLink']})")
-                            
+                # Save results to Session State so they persist
+                st.session_state.search_results = results.get('files', [])
+                st.session_state.last_query = query_text
+                
             except Exception as e:
                 st.error(f"Search failed: {str(e)}")
+
+# --- DISPLAY RESULTS (Outside the form) ---
+# We read from session_state, so the images stay visible even after the input clears
+if st.session_state.last_query:
+    st.write(f"Results for: **{st.session_state.last_query}**")
+
+items = st.session_state.search_results
+
+if items:
+    # 2-column grid layout
+    cols = st.columns(2)
+    for index, item in enumerate(items):
+        with cols[index % 2]:
+            if 'thumbnailLink' in item:
+                st.image(item['thumbnailLink'], use_column_width=True)
+            else:
+                st.write("No preview available")
+            
+            st.caption(item['name'])
+            # Link to open in Drive
+            st.markdown(f"[View Full Size]({item['webContentLink']})")
+elif submitted and not items:
+    st.info("No images found.")
