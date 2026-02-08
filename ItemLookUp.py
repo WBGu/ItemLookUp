@@ -38,6 +38,7 @@ with st.sidebar:
     # default_folder = "YOUR_HARDCODED_FOLDER_ID"
     default_folder = "" 
     folder_id = st.text_input("Google Drive Folder ID", value=default_folder)
+    folder_id = "1V5nUlIgF783gDQA942Pl2XLxOKDDa0jK"
     st.info("Paste the ID string from your Google Drive folder URL.")
 
 # 2. Main Search Area
