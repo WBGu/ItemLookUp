@@ -2,14 +2,12 @@ import streamlit as st
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-# --- 1. MAXIMIZE SCREEN SPACE ---
-# This must be the very first Streamlit command!
+# --- 1. LAYOUT CONFIG ---
 st.set_page_config(layout="wide", page_title="Drive Search")
 
-# --- CONFIGURATION ---
+# --- AUTH & SETUP ---
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 
-# Session State for results
 if 'search_results' not in st.session_state:
     st.session_state.search_results = []
 if 'last_query' not in st.session_state:
@@ -18,7 +16,7 @@ if 'last_query' not in st.session_state:
 def get_drive_service():
     try:
         if "gcp_service_account" not in st.secrets:
-            st.error("Secrets not found! Check Streamlit settings.")
+            st.error("Secrets not found!")
             st.stop()
         key_dict = st.secrets["gcp_service_account"]
         creds = service_account.Credentials.from_service_account_info(
@@ -30,11 +28,11 @@ def get_drive_service():
         st.stop()
 
 def search_recursive(service, root_folder_id, query_text):
-    """Crawls through folders starting at root_folder_id."""
+    """Crawls through folders."""
     found_files = []
     folder_stack = [root_folder_id]
     
-    # We use a placeholder in the sidebar for status updates so it doesn't clutter the main view
+    # Status indicator in sidebar to keep main area clean
     status_text = st.sidebar.empty()
     
     while folder_stack:
@@ -56,63 +54,72 @@ def search_recursive(service, root_folder_id, query_text):
             for item in items:
                 if item['mimeType'] == 'application/vnd.google-apps.folder':
                     folder_stack.append(item['id'])
-                if query_text.lower() in item['name'].lower() and "image/" in item.get('mimeType', ''):
+                elif query_text.lower() in item['name'].lower() and "image/" in item.get('mimeType', ''):
                     found_files.append(item)
             
             status_text.text(f"Scanning... Found {len(found_files)} images...")
             
         except Exception as e:
-            st.sidebar.warning(f"Skipped folder: {e}")
+            st.sidebar.warning(f"Error reading folder {current_id}: {e}")
             
     status_text.empty()
     return found_files
 
-# --- SIDEBAR UI (Controls) ---
+# --- 2. SIDEBAR (Title & Settings) ---
 with st.sidebar:
+    # Big Title is hidden away here to save main screen space
     st.title("📂 Drive Search")
+    st.caption("v1.0 - Recursive Search")
     
-    st.markdown("### Settings")
+    st.divider()
+    
+    st.markdown("**Settings**")
     default_id = "1V5nUlIgF783gDQA942Pl2XLxOKDDa0jK" 
     folder_id = st.text_input("Root Folder ID", value=default_id)
     if not folder_id:
-        st.info("Paste ID from Drive URL above.")
+        st.info("Paste ID from Drive URL.")
 
-    st.divider() # Adds a nice visual line
+# --- 3. MAIN AREA (Search Bar & Results) ---
 
-    # Search Form inside Sidebar
+# We use columns to make the search bar centered and not too wide
+# [1, 3, 1] means: "Space - Search Bar - Space"
+col_left, col_mid, col_right = st.columns([1, 6, 1])
+
+with col_mid:
     with st.form("search_form", clear_on_submit=True):
-        query_text = st.text_input("Filename", placeholder="e.g. invoice")
-        submitted = st.form_submit_button("Search Drive", type="primary")
+        # Search input and button side-by-side
+        c1, c2 = st.columns([4, 1]) 
+        with c1:
+            query_text = st.text_input("Search", placeholder="Enter filename...", label_visibility="collapsed")
+        with c2:
+            submitted = st.form_submit_button("Search", type="primary", use_container_width=True)
 
-# --- MAIN UI (Results Only) ---
-# Logic to run search
+# Logic
 if submitted and query_text:
     if not folder_id:
-        st.sidebar.warning("⚠️ Enter a Root Folder ID first.")
+        st.error("⚠️ Please enter a Folder ID in the sidebar (left).")
     else:
         service = get_drive_service()
-        with st.spinner("Searching..."):
+        with st.spinner("Searching entire folder tree..."):
             results = search_recursive(service, folder_id, query_text)
             st.session_state.search_results = results
             st.session_state.last_query = query_text
 
-# Display Results in Main Area
+# Results Display
 if st.session_state.last_query:
-    st.subheader(f"Results for: {st.session_state.last_query}")
+    st.markdown(f"### Results for: *{st.session_state.last_query}*")
 
 items = st.session_state.search_results
 
 if items:
-    # Now we can use 4 or 5 columns because we have the full screen width!
-    cols = st.columns(5) 
+    # Wide layout allows for 5 images per row
+    cols = st.columns(5)
     for index, item in enumerate(items):
         with cols[index % 5]:
             if 'thumbnailLink' in item:
                 st.image(item['thumbnailLink'], use_column_width=True)
-            
-            # Clean name display
             st.caption(item['name'])
-            st.markdown(f"[View Full]({item['webContentLink']})")
+            st.markdown(f"[View Full Size]({item['webContentLink']})")
 
 elif submitted:
     st.info("No images found.")
