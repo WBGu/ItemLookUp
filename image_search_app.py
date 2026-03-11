@@ -10,13 +10,22 @@ class ImageSearchApp:
         self.root.title("Image Search Tool + Inventory")
         self.root.geometry("800x850") # Increased height for inventory info
 
-        # Variables
+        # --- Variables ---
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        parent_dir = os.path.dirname(script_dir)
+        
+        default_json_inventory = os.path.join(parent_dir, "Inventory","Inventory.json")
+        
         self.search_folder = tk.StringVar()
-        self.inventory_path = tk.StringVar()
+        self.inventory_path = tk.StringVar(value=default_json_inventory)
         self.inventory_data = {}
+        
+        if os.path.exists(default_json_inventory):
+            self.load_inventory()
+        else:
+            print("Warning: Default inventory JSON not found on startup.")
 
         # --- UI Layout ---
-
         # 1. Folder & File Selection Section
         selection_frame = tk.Frame(root, pady=10)
         selection_frame.pack(fill="x", padx=10)
