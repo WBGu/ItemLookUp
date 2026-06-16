@@ -59,12 +59,35 @@ class ImageSearchApp:
         self.lbl_inventory_info.pack(pady=5)
 
         # 4. Image Display Area
-        self.display_frame = tk.Frame(root, bg="gray90", width=750, height=550)
-        self.display_frame.pack_propagate(False)
-        self.display_frame.pack(pady=10)
+        self.display_frame = tk.Frame(root)
+        self.display_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
-        self.lbl_image = tk.Label(self.display_frame, text="No image displayed", bg="gray90")
-        self.lbl_image.pack(expand=True)
+        self.canvas = tk.Canvas(self.display_frame)
+        self.scrollbar = tk.Scrollbar(
+            self.display_frame,
+            orient="vertical",
+            command=self.canvas.yview
+        )
+
+        self.images_frame = tk.Frame(self.canvas)
+
+        self.images_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(
+                scrollregion=self.canvas.bbox("all")
+            )
+        )
+
+        self.canvas.create_window(
+            (0, 0),
+            window=self.images_frame,
+            anchor="nw"
+        )
+
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
 
     def browse_folder(self):
         folder_selected = filedialog.askdirectory()
@@ -108,23 +131,27 @@ class ImageSearchApp:
         self.lbl_inventory_info.config(text=f"{item_id} - Qty: {qty}")
 
         # 2. Attempt to find and display the image
-        found_path = self.find_file(folder, item_id)
+        found_paths = self.find_files(folder, item_id)
 
-        if found_path:
-            self.display_image(found_path)
-            self.search_entry.focus() 
+        if found_paths:
+            self.display_images(found_paths)
         else:
             messagebox.showinfo("Not Found", f"Could not find image for '{item_id}'.")
             self.clear_image()
 
-    def find_file(self, folder, filename):
-        extensions = ['', '.jpg', '.jpeg', '.png', '.gif', '.bmp']
+    def find_files(self, folder, prefix):
+        valid_exts = ('.jpg', '.jpeg', '.png', '.gif', '.bmp')
+
+        matches = []
+
         for root, dirs, files in os.walk(folder):
-            for ext in extensions:
-                target = filename + ext
-                if target in files:
-                    return os.path.join(root, target)
-        return None
+            for file in files:
+                name, ext = os.path.splitext(file)
+
+                if ext.lower() in valid_exts and name.startswith(prefix):
+                    matches.append(os.path.join(root, file))
+
+        return sorted(matches)
 
     def display_image(self, path):
         try:
@@ -150,9 +177,56 @@ class ImageSearchApp:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to open image: {e}")
 
+    def display_images(self, paths):
+        # Remove old images
+        for widget in self.images_frame.winfo_children():
+            widget.destroy()
+
+        self.image_refs = []
+
+        for path in paths:
+            try:
+                img = Image.open(path)
+
+                # Get current canvas width
+                self.root.update_idletasks()
+                available_width = self.canvas.winfo_width()
+
+                if available_width < 100:
+                    available_width = 750
+
+                max_width = available_width - 40
+                max_height = 500
+
+                img.thumbnail(
+                    (max_width, max_height),
+                    Image.Resampling.LANCZOS
+                )
+
+                photo = ImageTk.PhotoImage(img)
+
+                frame = tk.Frame(self.images_frame)
+                frame.pack(pady=10)
+
+                lbl_name = tk.Label(
+                    frame,
+                    text=os.path.basename(path),
+                    font=("Arial", 10, "bold")
+                )
+                lbl_name.pack()
+
+                lbl_img = tk.Label(frame, image=photo)
+                lbl_img.pack()
+
+                self.image_refs.append(photo)
+
+            except Exception as e:
+                print(f"Error loading {path}: {e}")
     def clear_image(self):
-        self.lbl_image.config(image="", text="No image displayed")
-        self.lbl_image.image = None
+        for widget in self.images_frame.winfo_children():
+            widget.destroy()
+
+        self.image_refs = []
 
 if __name__ == "__main__":
     root = tk.Tk()
