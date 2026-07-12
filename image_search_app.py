@@ -19,6 +19,8 @@ class ImageSearchApp:
         self.search_folder = tk.StringVar()
         self.inventory_path = tk.StringVar(value=default_json_inventory)
         self.inventory_data = {}
+        self.sorted_items = []
+        self.current_item = None
         
         if os.path.exists(default_json_inventory):
             self.load_inventory()
@@ -49,6 +51,16 @@ class ImageSearchApp:
         self.search_entry = tk.Entry(search_frame, width=20, font=("Arial", 28)) 
         self.search_entry.pack(side="left", padx=10)
         self.search_entry.bind('<Return>', self.perform_search)
+        # Arrow key navigation
+        self.root.bind(
+            "<Left>",
+            lambda e: self.previous_item()
+        )
+
+        self.root.bind(
+            "<Right>",
+            lambda e: self.next_item()
+        )
 
         btn_search = tk.Button(search_frame, text="Search", command=self.perform_search, font=("Arial", 10), height=2)
         btn_search.pack(side="left")
@@ -105,39 +117,38 @@ class ImageSearchApp:
         try:
             with open(self.inventory_path.get(), 'r') as f:
                 self.inventory_data = json.load(f)
+
+            # Sort inventory items for navigation
+            self.sorted_items = sorted(
+                self.inventory_data.keys(),
+                key=lambda x: int(''.join(filter(str.isdigit, x)))
+            )
+
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to load JSON: {e}")
+            messagebox.showerror(
+                "Error",
+                f"Failed to load JSON: {e}"
+            )
 
     def perform_search(self, event=None):
         folder = self.search_folder.get()
         item_id = self.search_entry.get().strip()
 
-        # Clear search bar immediately
         self.search_entry.delete(0, tk.END)
 
         if not folder:
-            messagebox.showwarning("Warning", "Please select an image folder first.")
+            messagebox.showwarning(
+                "Warning",
+                "Please select an image folder first."
+            )
             return
-        
+
         if not item_id:
             return
 
-        # 1. Update Inventory Text
-        # We reload the inventory here in case the JSON file was edited externally
-        if self.inventory_path.get():
-            self.load_inventory()
-            
-        qty = self.inventory_data.get(item_id, "N/A")
-        self.lbl_inventory_info.config(text=f"{item_id} - Qty: {qty}")
+        self.load_inventory()
 
-        # 2. Attempt to find and display the image
-        found_paths = self.find_files(folder, item_id)
-
-        if found_paths:
-            self.display_images(found_paths)
-        else:
-            messagebox.showinfo("Not Found", f"Could not find image for '{item_id}'.")
-            self.clear_image()
+        self.load_item(item_id)
 
     def find_files(self, folder, prefix):
         valid_exts = ('.jpg', '.jpeg', '.png', '.gif', '.bmp')
@@ -227,6 +238,60 @@ class ImageSearchApp:
             widget.destroy()
 
         self.image_refs = []
+        
+    def load_item(self, item_id):
+        folder = self.search_folder.get()
+
+        self.current_item = item_id
+
+        qty = self.inventory_data.get(item_id, "N/A")
+
+        self.lbl_inventory_info.config(
+            text=f"{item_id} - Qty: {qty}"
+        )
+
+        found_paths = self.find_files(
+            folder,
+            item_id
+        )
+
+        if found_paths:
+            self.display_images(found_paths)
+        else:
+            self.clear_image()
+    
+    def next_item(self):
+        if not self.current_item:
+            return
+
+        try:
+            index = self.sorted_items.index(
+                self.current_item
+            )
+
+            if index < len(self.sorted_items) - 1:
+                next_id = self.sorted_items[index + 1]
+                self.load_item(next_id)
+
+        except ValueError:
+            pass
+
+
+    def previous_item(self):
+        if not self.current_item:
+            return
+
+        try:
+            index = self.sorted_items.index(
+                self.current_item
+            )
+
+            if index > 0:
+                previous_id = self.sorted_items[index - 1]
+                self.load_item(previous_id)
+
+        except ValueError:
+            pass
 
 if __name__ == "__main__":
     root = tk.Tk()
